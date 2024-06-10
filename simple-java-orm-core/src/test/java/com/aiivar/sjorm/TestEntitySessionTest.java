@@ -1,102 +1,93 @@
 package com.aiivar.sjorm;
 
-import com.aiivar.sjorm.config.Configuration;
 import com.aiivar.sjorm.entity.TestEntity;
 import com.aiivar.sjorm.exceptions.OrmException;
 import com.aiivar.sjorm.session.Session;
-import com.aiivar.sjorm.session.SessionFactory;
-import org.junit.After;
-import org.junit.Before;
+import org.h2.jdbcx.JdbcDataSource;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
+import java.sql.SQLException;
 
 import static org.junit.Assert.*;
 
 public class TestEntitySessionTest {
-    private static final String JDBC_URL = "jdbc:h2:mem:testdb";
-    private static final String USER = "sa";
-    private static final String PASSWORD = "";
 
-    private Connection connection;
-    private SessionFactory sessionFactory;
+    private static Connection connection;
+    private static Session session;
 
-    @Before
-    public void setUp() throws Exception {
-        connection = DriverManager.getConnection(JDBC_URL, USER, PASSWORD);
+    @BeforeClass
+    public static void setupDatabase() throws SQLException {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("sa");
 
-        Configuration configuration = new Configuration(JDBC_URL, USER, PASSWORD);
-        sessionFactory = new SessionFactory(configuration);
+        connection = dataSource.getConnection();
+        session = new Session(connection);
 
-        try (Session session = sessionFactory.openSession()) {
-            session.createTable(TestEntity.class);
-        }
+        // Create table for TestEntity
+        session.createTable(TestEntity.class);
     }
 
-    @After
-    public void tearDown() throws Exception {
-        if (connection != null && !connection.isClosed()) {
-            connection.close();
-        }
-    }
-
-    @Test
-    public void testSaveAndFind() {
-        try (Session session = sessionFactory.openSession()) {
-            TestEntity entity = new TestEntity();
-            entity.setName("Test Name");
-            entity.setValue("Test Value");
-            session.save(entity);
-
-            assertNotNull(entity.getId());
-
-            TestEntity foundEntity = session.find(TestEntity.class, entity.getId());
-            assertNotNull(foundEntity);
-            assertEquals("Test Name", foundEntity.getName());
-            assertEquals("Test Value", foundEntity.getValue());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    @AfterClass
+    public static void closeDatabase() throws SQLException {
+        session.close();
+        connection.close();
     }
 
     @Test
-    public void testUpdate() {
-        try (Session session = sessionFactory.openSession()) {
-            TestEntity entity = new TestEntity();
-            entity.setName("Test Name");
-            entity.setValue("Test Value");
-            session.save(entity);
+    public void testSaveAndFind() throws SQLException {
+        TestEntity entity = new TestEntity();
+        entity.setName("Test Name");
+        entity.setValue("Test Value");
 
-            entity.setValue("Updated Value");
-            session.update(entity);
+        session.save(entity);
+        assertNotNull(entity.getId());
 
-            TestEntity updatedEntity = session.find(TestEntity.class, entity.getId());
-            assertNotNull(updatedEntity);
-            assertEquals("Updated Value", updatedEntity.getValue());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        TestEntity foundEntity = session.find(TestEntity.class, entity.getId());
+        assertNotNull(foundEntity);
+        assertEquals("Test Name", foundEntity.getName());
+        assertEquals("Test Value", foundEntity.getValue());
     }
 
     @Test
-    public void testDelete() {
-        try (Session session = sessionFactory.openSession()) {
-            TestEntity entity = new TestEntity();
-            entity.setName("Test Name");
-            entity.setValue("Test Value");
-            session.save(entity);
+    public void testUpdate() throws SQLException {
+        TestEntity entity = new TestEntity();
+        entity.setName("Test Name");
+        entity.setValue("Test Value");
 
-            session.delete(entity);
+        session.save(entity);
+        assertNotNull(entity.getId());
 
-            try {
-                session.find(TestEntity.class, entity.getId());
-                fail("Expected OrmException to be thrown");
-            } catch (OrmException e) {
-                assertEquals("Entity not found", e.getMessage());
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        entity.setName("Updated Name");
+        entity.setValue("Updated Value");
+        session.update(entity);
+
+        TestEntity updatedEntity = session.find(TestEntity.class, entity.getId());
+        assertNotNull(updatedEntity);
+        assertEquals("Updated Name", updatedEntity.getName());
+        assertEquals("Updated Value", updatedEntity.getValue());
+    }
+
+    @Test
+    public void testDelete() throws SQLException {
+        TestEntity entity = new TestEntity();
+        entity.setName("Test Name");
+        entity.setValue("Test Value");
+
+        session.save(entity);
+        assertNotNull(entity.getId());
+
+        session.delete(entity);
+
+        try {
+            session.find(TestEntity.class, entity.getId());
+            fail("Expected an OrmException to be thrown");
+        } catch (OrmException e) {
+            assertEquals("Failed to find entity", e.getMessage());
         }
     }
 }
